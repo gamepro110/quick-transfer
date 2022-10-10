@@ -1,3 +1,5 @@
+using Core;
+
 using Eto.Drawing;
 using Eto.Forms;
 using Eto.Forms.ThemedControls;
@@ -12,30 +14,39 @@ using static System.Windows.Forms.VisualStyles.VisualStyleElement.ScrollBar;
 
 namespace quick_transfer_eto
 {
-    // Remake this in eto-xml form?
-    // TODO add recursive option
+    internal enum DirectoryType
+    {
+        Source,
+        Target,
+        other,
+    }
+
     internal class MyForm : Form
     {
         private readonly Color grey = new Color(0.69f, 0.69f, 0.69f, 1);
 
+#pragma warning disable IDE0044 // Add readonly modifier
         private string sourceDir;
         private string destinationDir;
+        private int numThreads = 2;
+        private bool overwrite = false;
         private TextBox sourceDirTextBox;
         private TextBox destinationDirTextBox;
         private List<Tuple<string, bool>> files = new List<Tuple<string, bool>>();
-        private readonly Control FileBox;
-
-        internal string SrcDir
-        {
-            get => sourceDir;
-            set => sourceDir = value;
-        }
+        private readonly Control filesBox;
+        private List<int> MultithreadValues = new List<int>();
+#pragma warning restore IDE0044 // Add readonly modifier
 
         public MyForm()
         {
+            for (int i = 2; i < Environment.ProcessorCount + 1; i++)
+            {
+                MultithreadValues.Add(i);
+            }
+
             MinimumSize = new Size(600, 400);
             Title = "quick-transfer";
-            AutoSize = true;
+            AutoSize = false;
             BackgroundColor = grey;
 
             Menu = new MenuBar
@@ -58,32 +69,113 @@ namespace quick_transfer_eto
                 Padding = new Padding(5),
             };
 
-            addPathSelectRow(ref layout, ref sourceDir, ref sourceDirTextBox, "Source directory", "Source Path", "source directory");
-            addPathSelectRow(ref layout, ref destinationDir, ref destinationDirTextBox, "Target directory", "Target Path", "targets directory", false);
+            AddPathSelectRow(ref layout, DirectoryType.Source, ref sourceDirTextBox, "Source directory", "Source Path", "source directory");
+            AddPathSelectRow(ref layout, DirectoryType.Target, ref destinationDirTextBox, "Target directory", "Target Path", "targets directory");
 
-            FileBox = new TextArea()
+            #region options
+
+            DropDown threadDropdown = new DropDown()
             {
-                AcceptsReturn = true,
-                AcceptsTab = false,
-                ReadOnly = true,
-                Width = this.MinimumSize.Width,
+                Cursor = Cursors.Pointer,
+                SelectedIndex = 0,
+                Height = 20
+            };
+
+            foreach (var item in MultithreadValues)
+            {
+                threadDropdown.Items.Add($"{item}");
+            }
+
+            threadDropdown.SelectedIndexChanged += ThreadDropdownSelectedIndexChanged;
+
+            CheckBox overwriteCheckbox = new CheckBox()
+            {
+                Text = "Overwrite?",
+            };
+
+            overwriteCheckbox.CheckedChanged += OverwriteCheckboxValueChanged;
+
+            layout.Rows.Add(
+                new TableRow(
+                    new Button(TransferButton_Click)
+                    {
+                        Text = "Start transfer",
+                        Width = MinimumSize.Width / 3 * 2,
+                        Height = 20,
+                    },
+                    threadDropdown,
+                    overwriteCheckbox
+                )
+                {
+                    ScaleHeight = false,
+                }
+            );
+
+            layout.Rows.Add(
+                new TableRow(
+                    new Button((s, e) => ChangeSelectedFiles(true))
+                    {
+                        Text = "Select all",
+                    },
+                    new Button((s, e) => ChangeSelectedFiles(false))
+                    {
+                        Text = "Unselect all",
+                    },
+                    new TableRow()
+                )
+            );
+
+            #endregion options
+
+            #region display
+
+            filesBox = new ListBox()
+            {
+                Width = MinimumSize.Width / 3 * 2,
+            };
+
+            filesBox.MouseUp += (object o, MouseEventArgs e) =>
+            {
+                if (o is not ListBox lbox)
+                {
+                    return;
+                }
+
+                var old = files[lbox.SelectedIndex];
+                Tuple<string, bool> value = new(old.Item1, !old.Item2);
+                files[lbox.SelectedIndex] = value;
+
+                UpdateFilesListBox();
             };
 
             layout.Rows.Add(
                 new TableRow(
-                    FileBox
+                    filesBox
                 )
             );
+
+            #endregion display
 
             Content = layout;
         }
 
-        private void addPathSelectRow(ref TableLayout layout, ref string targetDir, ref TextBox textbox, string title, string dialogTitle, string placeholder = "...", bool updateTextArea = true)
+        private void ChangeSelectedFiles(bool selected)
+        {
+            int count = files.Count;
+            for (int i = 0; i < count; i++)
+            {
+                Tuple<string, bool> file = new Tuple<string, bool>(files[i].Item1, selected);
+                files[i] = file;
+            }
+
+            UpdateFilesListBox();
+        }
+
+        private void AddPathSelectRow(ref TableLayout layout, DirectoryType directoryType, ref TextBox textbox, string title, string dialogTitle, string placeholder = "...")
         {
             var newTextbox = new TextBox()
             {
                 PlaceholderText = placeholder,
-                DataContext = targetDir,
             };
 
             textbox = newTextbox;
@@ -95,61 +187,141 @@ namespace quick_transfer_eto
                     {
                         Text = title,
                     },
-                    new Button(buttonCallback)
+                    new Button((object sender, EventArgs e) => SetPathButtonCallback(dialogTitle, directoryType, newTextbox))
                     {
                         Text = "...",
                     }
                 )
             );
-
-            void buttonCallback(object sender, EventArgs e)
-            {
-                DirDialog(dialogTitle, this, out string path);
-                SrcDir = path;
-                newTextbox.Text = path;
-
-                if (!updateTextArea)
-                { return; }
-
-                files.Clear();
-
-                string[] gatheredFiles = Directory.GetFiles(path);
-
-                foreach (var item in gatheredFiles)
-                {
-                    files.Add(new(item, true));
-                }
-
-                var fb = FileBox as TextArea;
-                fb.Text = string.Empty;
-                foreach (var item in files)
-                {
-                    string txt = item.Item1.Split("\\")[^1];
-                    fb.Text += $"[{(item.Item2 ? "X" : " ")}]: {txt}\n";
-                }
-            }
         }
 
-        private List<TableRow> fillRows<T>(List<T> list)
+        private void SetPathButtonCallback(string dialogTitle, DirectoryType directoryType, TextBox textBox)
         {
-            List<TableRow> rows = new List<TableRow>();
-
-            foreach (var item in list)
+            if (!DirDialog(dialogTitle, this, out string path))
             {
-                rows.Add(
-                    new TableRow(
-                        new Label()
-                        {
-                            Text = $"{item}"
-                        }
-                    )
-                );
+                return;
             }
 
-            return rows;
+            switch (directoryType)
+            {
+                case DirectoryType.Source:
+                    {
+                        UpdateFilesList(path);
+                        sourceDir = path;
+                        break;
+                    }
+                case DirectoryType.Target:
+                    {
+                        destinationDir = path;
+                        break;
+                    }
+                case DirectoryType.other:
+                default:
+                    {
+                        break;
+                    }
+            }
+
+            textBox.Text = path;
+            UpdateFilesListBox();
         }
 
-        private void DirDialog(string title, Window win, out string path)
+        private void UpdateFilesList(string path)
+        {
+            files.Clear();
+            string[] gatheredFiles = Directory.GetFiles(path);
+
+            foreach (var item in gatheredFiles)
+            {
+                files.Add(new(item, true));
+            }
+        }
+
+        private void UpdateFilesListBox()
+        {
+            if (filesBox is not ListBox fb)
+            {
+                return;
+            }
+
+            fb.Items.Clear();
+
+            foreach (var item in files)
+            {
+                string txt = GetFileNameFromPath(item.Item1);
+                fb.Items.Add($"[ {(item.Item2 ? "X" : "  ")} ]: {txt}\n");
+            }
+        }
+
+        private void TransferButton_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(sourceDir))
+            {
+                MessageBox.Show("no source directory given...");
+                return;
+            }
+            if (string.IsNullOrEmpty(destinationDir))
+            {
+                MessageBox.Show("no destination set...");
+                return;
+            }
+
+            List<string> TransferingFiles = new List<string>();
+
+            foreach (var file in files.Where(t => t.Item2))
+            {
+                TransferingFiles.Add(file.Item1);
+            }
+
+            string txt = "";
+            TransferingFiles.ForEach(s => txt += $"{GetFileNameFromPath(s)}\t\n");
+            txt += $"\n\n\nDestination: '{destinationDir}\\'";
+            DialogResult questionResult = MessageBox.Show(txt, "are you sure u want to copy the following file(s)??", MessageBoxButtons.OKCancel, MessageBoxType.Question);
+            if (DialogResult.Cancel == questionResult)
+            {
+                return;
+            }
+
+            bool res = Transferer.Transfer(TransferingFiles, destinationDir, numThreads, overwrite);
+
+            string messageBoxText;
+            MessageBoxType type;
+
+            if (!res)
+            {
+                messageBoxText = "something went wrong during the transfer!!";
+                type = MessageBoxType.Error;
+            }
+            else
+            {
+                messageBoxText = "transfered file(s) succesfully :)";
+                type = MessageBoxType.Information;
+                destinationDir = string.Empty;
+            }
+            MessageBox.Show(messageBoxText, type);
+        }
+
+        private void OverwriteCheckboxValueChanged(object sender, EventArgs e)
+        {
+            if (sender is not CheckBox check)
+            {
+                return;
+            }
+
+            overwrite = check.Enabled;
+        }
+
+        private void ThreadDropdownSelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (sender is not DropDown drop)
+            {
+                return;
+            }
+
+            numThreads = MultithreadValues[drop.SelectedIndex];
+        }
+
+        private static bool DirDialog(string title, Window win, out string path)
         {
             SelectFolderDialog folderDialog = new SelectFolderDialog()
             {
@@ -159,18 +331,16 @@ namespace quick_transfer_eto
             if (folderDialog.ShowDialog(win) != DialogResult.Ok)
             {
                 path = "";
-                return;
+                return false;
             }
 
             path = folderDialog.Directory;
+            return true;
         }
 
-        private static bool IsPath(string dir)
+        private string GetFileNameFromPath(string input)
         {
-            return
-                Path.EndsInDirectorySeparator(dir) &&
-                Directory.Exists(dir) &&
-                Uri.IsWellFormedUriString(dir, UriKind.Absolute);
+            return input.Split("\\")[^1];
         }
     }
 
@@ -193,7 +363,7 @@ namespace quick_transfer_eto
 
     public class AboutCommand : Command
     {
-        private Window window;
+        private readonly Window window;
 
         public AboutCommand(Window window)
         {

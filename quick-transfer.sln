@@ -13,7 +13,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EtoExample", "EtoExample\Et
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "quick-transfer-eto", "quick-transfer-eto\quick-transfer-eto.csproj", "{3849DECC-9D34-4073-AE2A-531F07706C12}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Core", "Core\Core.csproj", "{3D4D9C13-47F8-4C93-8EBF-48A17D5409EE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Core", "Core\Core.csproj", "{3D4D9C13-47F8-4C93-8EBF-48A17D5409EE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{73066E35-B727-4CCC-9F9D-A0F73032FFF9}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

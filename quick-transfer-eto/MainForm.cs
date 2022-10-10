@@ -8,6 +8,8 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.ScrollBar;
+
 namespace quick_transfer_eto
 {
     // Remake this in eto-xml form?
@@ -18,9 +20,16 @@ namespace quick_transfer_eto
 
         private string sourceDir;
         private string destinationDir;
+        private TextBox sourceDirTextBox;
+        private TextBox destinationDirTextBox;
         private List<Tuple<string, bool>> files = new List<Tuple<string, bool>>();
+        private readonly Control FileBox;
 
-        private List<int> numbers = new List<int> { 1, 5, 8, 8, 5, 6, 8, 4, 1, 2, 3, 3, 5 };
+        internal string SrcDir
+        {
+            get => sourceDir;
+            set => sourceDir = value;
+        }
 
         public MyForm()
         {
@@ -46,43 +55,42 @@ namespace quick_transfer_eto
             var layout = new TableLayout
             {
                 Spacing = new Size(5, 5),
-                Padding = new Padding(10, 10, 10, 10),
+                Padding = new Padding(5),
             };
 
-            addPathSelectRow(ref layout, ref sourceDir, "Source directory", "Source Path", "source directory");
-            addPathSelectRow(ref layout, ref destinationDir, "Target directory", "Target Path", "Targets directory");
+            addPathSelectRow(ref layout, ref sourceDir, ref sourceDirTextBox, "Source directory", "Source Path", "source directory");
+            addPathSelectRow(ref layout, ref destinationDir, ref destinationDirTextBox, "Target directory", "Target Path", "targets directory", false);
+
+            FileBox = new TextArea()
+            {
+                AcceptsReturn = true,
+                AcceptsTab = false,
+                ReadOnly = true,
+                Width = this.MinimumSize.Width,
+            };
 
             layout.Rows.Add(
                 new TableRow(
+                    FileBox
                 )
             );
-
-            foreach (var item in files)
-            {
-                layout.Rows.Add(
-                    new TableRow(
-                        new Label { Text = item.Item1 },
-                        new CheckBox { Checked = item.Item2 }
-                    )
-                );
-            }
-
-            //if (!string.IsNullOrEmpty(sourceDir))
-            //{
-            //    fillRows(Directory.GetFiles(sourceDir).ToList()).ForEach(n => { layout.Rows.Add(n); });
-            //}
 
             Content = layout;
         }
 
-        private void addPathSelectRow(ref TableLayout layout, ref string targetDir, string title, string dialogTitle, string placeholder = "...")
+        private void addPathSelectRow(ref TableLayout layout, ref string targetDir, ref TextBox textbox, string title, string dialogTitle, string placeholder = "...", bool updateTextArea = true)
         {
+            var newTextbox = new TextBox()
+            {
+                PlaceholderText = placeholder,
+                DataContext = targetDir,
+            };
+
+            textbox = newTextbox;
+
             layout.Rows.Add(
                 new TableRow(
-                    new TextBox()
-                    {
-                        PlaceholderText = placeholder,
-                    },
+                    textbox,
                     new Label
                     {
                         Text = title,
@@ -90,36 +98,34 @@ namespace quick_transfer_eto
                     new Button(buttonCallback)
                     {
                         Text = "...",
-                        Width = 20
                     }
-                    //new Button((sender, e) =>
-                    //{
-                    //    DirDialog(dialogTitle, this, out targetDir);
-                    //    files.Clear();
-                    //    string[] gatheredFiles = Directory.GetFiles(targetDir);
-                    //
-                    //    foreach (var item in gatheredFiles)
-                    //    {
-                    //        files.Add(new(item, true));
-                    //    }
-                    //})
-                    //{
-                    //    Text = "...",
-                    //    Width = 20
-                    //}
                 )
             );
 
             void buttonCallback(object sender, EventArgs e)
             {
                 DirDialog(dialogTitle, this, out string path);
-                //targetDir = path;
+                SrcDir = path;
+                newTextbox.Text = path;
+
+                if (!updateTextArea)
+                { return; }
+
                 files.Clear();
+
                 string[] gatheredFiles = Directory.GetFiles(path);
 
                 foreach (var item in gatheredFiles)
                 {
                     files.Add(new(item, true));
+                }
+
+                var fb = FileBox as TextArea;
+                fb.Text = string.Empty;
+                foreach (var item in files)
+                {
+                    string txt = item.Item1.Split("\\")[^1];
+                    fb.Text += $"[{(item.Item2 ? "X" : " ")}]: {txt}\n";
                 }
             }
         }

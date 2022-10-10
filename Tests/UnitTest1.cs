@@ -10,7 +10,9 @@ namespace Tests
 
             info = new Dictionary<string, FileInfo>();
             foreach (var item in paths)
-            { info.Add(item, new FileInfo(item)); }
+            {
+                info.Add(item, new FileInfo(item));
+            }
 
             return paths;
         }
@@ -24,26 +26,25 @@ namespace Tests
             Console.WriteLine($"transfer size (bytes/MB): ({size}/{size / 1024 / 1024})");
         }
 
-        private static string GetTestDir
+        private static string GetTestDir()
         {
-            get
+            string path = "";
+            string[] partsOfPath = Environment.CurrentDirectory.Split('\\')[0..^3];
+
+            foreach (string item in partsOfPath[0..^1])
             {
-                string path = "";
-                string[] partsOfPath = Environment.CurrentDirectory.Split('\\')[0..^3];
-
-                foreach (string item in partsOfPath[0..^1])
-                { path += $"{item}//"; }
-                path += partsOfPath[^1];
-
-                return path;
+                path += $"{item}//";
             }
+            path += partsOfPath[^1];
+
+            return path;
         }
 
         [TestCase("\\testZipSource\\dev.rar", "\\testZipTarget\\", ExpectedResult = true)]
         public bool SingleFile(string srcFile, string targetDir)
         {
-            string src = GetTestDir + srcFile;
-            string target = GetTestDir + targetDir;
+            string src = GetTestDir() + srcFile;
+            string target = GetTestDir() + targetDir;
             return Transferer.Transfer(src, target, true);
         }
 
@@ -52,8 +53,8 @@ namespace Tests
         [TestCase("\\testBulkSource", "\\testBulkTarget", 16, ExpectedResult = true, TestName = "bulk t = 16")]
         public bool Bulk(string sourceDir, string targetDir, int numThreads)
         {
-            string src = GetTestDir + sourceDir;
-            string target = GetTestDir + targetDir;
+            string src = GetTestDir() + sourceDir;
+            string target = GetTestDir() + targetDir;
 
             List<string> files = GetFilePaths(src, out Dictionary<string, FileInfo> info);
             Console.WriteLine($"num files: {files.Count}");
@@ -72,8 +73,8 @@ namespace Tests
         [TestCase("\\testSourceDir", "\\testTargetDir", 16, ExpectedResult = true, TestName = "t = 16")]
         public bool DirContents(string srcValue, string trgValue, int numThreads)
         {
-            string src = GetTestDir + srcValue;
-            string target = GetTestDir + trgValue;
+            string src = GetTestDir() + srcValue;
+            string target = GetTestDir() + trgValue;
 
             List<string> files = GetFilePaths(src, out Dictionary<string, FileInfo> info);
             Console.WriteLine($"num files: {files.Count}");
